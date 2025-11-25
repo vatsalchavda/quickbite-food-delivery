@@ -1,0 +1,15 @@
+{
+  "name": "quickbite-tools",
+  "version": "1.0.0",
+  "description": "Database seeding and testing utilities for QuickBite",
+  "scripts": {
+    "seed": "node seed-users.js seed",
+    "seed:100": "node seed-users.js seed 100",
+    "clean": "node seed-users.js clean",
+    "reset": "node seed-users.js reset"
+  },
+  "dependencies": {
+    "mongoose": "^8.0.3",
+    "bcryptjs": "^2.4.3"
+  }
+}

@@ -8,9 +8,53 @@ A microservices-based food delivery platform built with Node.js, Express, MongoD
 - Docker & Docker Compose
 - Kubernetes (Minikube/Docker Desktop) (optional, for K8s deployment)
 
-### Start All Services
+### 1. Setup Environment Variables
+
+**IMPORTANT:** Generate secure passwords before running!
+
+```bash
+# Copy environment template
+cp .env.example .env
+
+# Generate secure passwords (use these commands or your preferred method)
+openssl rand -base64 32   # For MONGO_ROOT_PASSWORD
+openssl rand -base64 32   # For RABBITMQ_PASSWORD
+openssl rand -base64 64   # For JWT_SECRET
+
+# Edit .env and paste the generated values
+```
+
+**Required variables in `.env`:**
+- `MONGO_ROOT_PASSWORD` - MongoDB admin password
+- `RABBITMQ_PASSWORD` - RabbitMQ password
+- `JWT_SECRET` - JWT signing secret
+
+### 2. Start All Services
 ```bash
 docker-compose up -d --build
+```
+
+Wait ~30 seconds for services to be healthy.
+
+### 3. Seed Test Data (Optional)
+```bash
+cd tools
+npm install
+node seed-users.js reset 20    # Create 20 test users
+```
+
+**Default credentials:** Check the script output for generated admin/user emails  
+**Password:** `password123` (for all users)
+
+### 4. Test the API
+```bash
+# Health check
+curl http://localhost:3001/health
+
+# Login
+curl -X POST http://localhost:3001/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"<admin-email>","password":"password123"}'
 ```
 
 ### View Logs

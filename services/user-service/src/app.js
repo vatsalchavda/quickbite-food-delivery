@@ -1,6 +1,8 @@
 const express = require('express');
 const helmet = require('helmet');
 const cors = require('cors');
+const swaggerUi = require('swagger-ui-express');
+const swaggerSpec = require('./config/swagger');
 const correlationIdMiddleware = require('../shared/middleware/correlationId');
 const { errorHandler } = require('../shared/utils/errorHandler');
 const authRoutes = require('./routes/authRoutes');
@@ -35,6 +37,13 @@ const createApp = (logger, eventPublisher) => {
     });
     next();
   });
+
+  // Swagger API Documentation
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    explorer: true,
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'QuickBite User Service API',
+  }));
 
   // Health check
   app.get('/health', (req, res) => {
