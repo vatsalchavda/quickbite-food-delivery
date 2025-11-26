@@ -6,10 +6,15 @@
     "seed": "node seed-users.js seed",
     "seed:100": "node seed-users.js seed 100",
     "clean": "node seed-users.js clean",
-    "reset": "node seed-users.js reset"
+    "reset": "node seed-users.js reset",
+    "seed:restaurants": "node seed-restaurants.js seed",
+    "seed:restaurants:20": "node seed-restaurants.js seed 20",
+    "clean:restaurants": "node seed-restaurants.js clean",
+    "reset:restaurants": "node seed-restaurants.js reset"
   },
   "dependencies": {
     "mongoose": "^8.0.3",
-    "bcryptjs": "^2.4.3"
+    "bcryptjs": "^2.4.3",
+    "@faker-js/faker": "^9.2.0"
   }
 }

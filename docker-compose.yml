@@ -103,6 +103,35 @@ services:
       retries: 3
       start_period: 40s
 
+  # Restaurant Service
+  quickbite-restaurant-service:
+    build:
+      context: .
+      dockerfile: services/restaurant-service/Dockerfile
+    container_name: quickbite-restaurant-service
+    restart: unless-stopped
+    ports:
+      - "${RESTAURANT_SERVICE_PORT:-3002}:3002"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3002
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@quickbite-mongodb:27017/${RESTAURANT_DB:-restaurant_service}?authSource=admin
+      REDIS_URL: redis://quickbite-redis:6379
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@quickbite-rabbitmq:5672
+    depends_on:
+      - quickbite-mongodb
+      - quickbite-redis
+      - quickbite-rabbitmq
+    networks:
+      - quickbite-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3002/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 40s
+
 volumes:
   mongodb_data:
   redis_data:
