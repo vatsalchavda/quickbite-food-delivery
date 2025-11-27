@@ -159,6 +159,36 @@ services:
       retries: 3
       start_period: 40s
 
+  # API Gateway
+  quickbite-api-gateway:
+    build:
+      context: .
+      dockerfile: services/api-gateway/Dockerfile
+    container_name: quickbite-api-gateway
+    restart: unless-stopped
+    ports:
+      - "${API_GATEWAY_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3000
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      JWT_SECRET: ${JWT_SECRET}
+      USER_SERVICE_URL: http://quickbite-user-service:3001
+      RESTAURANT_SERVICE_URL: http://quickbite-restaurant-service:3002
+      ORDER_SERVICE_URL: http://quickbite-order-service:3003
+    depends_on:
+      - quickbite-user-service
+      - quickbite-restaurant-service
+      - quickbite-order-service
+    networks:
+      - quickbite-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3000/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
 volumes:
   mongodb_data:
   redis_data:

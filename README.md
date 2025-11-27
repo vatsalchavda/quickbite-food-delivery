@@ -226,23 +226,23 @@ docker-compose down
 - RabbitMQ Management: http://localhost:15672 (admin/admin123)
 
 ### Access Services
-- User Service: http://localhost:3001
-- Restaurant Service: http://localhost:3002
-- Order Service: http://localhost:3003
-- Driver Service: http://localhost:3004
-- Notification Service: http://localhost:3005
-- API Gateway: http://localhost:3000
+- **API Gateway (Main Entry Point):** http://localhost:3000
+- User Service: http://localhost:3001 (internal)
+- Restaurant Service: http://localhost:3002 (internal)
+- Order Service: http://localhost:3003 (internal)
+- Driver Service: http://localhost:3004 (coming soon)
+- Notification Service: http://localhost:3005 (coming soon)
 
 ## Services
 
 | Service | Port | Description | Status |
 |---------|------|-------------|--------|
+| **API Gateway** | **3000** | **Unified API entry point with routing, auth, rate limiting, circuit breaker** | **✅ Complete** |
 | User Service | 3001 | Authentication & user management | ✅ Complete |
 | Restaurant Service | 3002 | Restaurant & menu management with Redis caching | ✅ Complete |
-| Order Service | 3003 | Order processing & state management | 🚧 Coming Soon |
+| Order Service | 3003 | Order processing & state management with event publishing | ✅ Complete |
 | Driver Service | 3004 | Driver tracking & assignment | 🚧 Coming Soon |
 | Notification Service | 3005 | Event-driven notifications | 🚧 Coming Soon |
-| API Gateway | 3000 | Unified API entry point | 🚧 Coming Soon |
 
 ## Tech Stack
 
@@ -250,6 +250,7 @@ docker-compose down
 **Databases:** MongoDB  
 **Cache:** Redis  
 **Message Broker:** RabbitMQ  
+**API Gateway:** Express.js, Axios, Opossum (circuit breaker), JWT validation  
 **Frontend:** React, Redux Toolkit, React Bootstrap  
 **DevOps:** Docker, Kubernetes, Kustomize  
 
@@ -257,9 +258,14 @@ docker-compose down
 
 - Microservices pattern with database per service
 - Event-driven communication via RabbitMQ
-- Caching layer with Redis
-- JWT-based authentication
-- API Gateway pattern
+- Caching layer with Redis (Restaurant Service)
+- JWT-based authentication with centralized validation
+- **API Gateway pattern with resilience features:**
+  - Request routing to backend services
+  - JWT token validation (centralized auth)
+  - Rate limiting (3 tiers: general, auth, write)
+  - Circuit breaker pattern (fail-fast, automatic recovery)
+  - Request/response logging and monitoring
 - Containerized deployment with Kubernetes
 
 ## Project Structure
@@ -313,11 +319,67 @@ quickbite-food-delivery/
 - Cache invalidation on create/update/delete
 - Cache hit/miss tracking in response (`source: "cache"` or `"database"`)
 
+### Order Service (Port 3003)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/health` | GET | ❌ | Health check |
+| `/api/orders` | POST | ✅ | Create order |
+| `/api/orders` | GET | ✅ | Get orders |
+| `/api/orders/:id` | GET | ✅ | Get order by ID |
+| `/api/orders/:id/confirm` | PUT | ✅ | Confirm order |
+| `/api/orders/:id/preparing` | PUT | ✅ | Start preparing |
+| `/api/orders/:id/ready` | PUT | ✅ | Mark ready |
+| `/api/orders/:id/out-for-delivery` | PUT | ✅ | Out for delivery |
+| `/api/orders/:id/delivered` | PUT | ✅ | Mark delivered |
+| `/api/orders/:id/cancel` | PUT | ✅ | Cancel order |
+
+**State Machine:**
+- 7 states: PENDING → CONFIRMED → PREPARING → READY → OUT_FOR_DELIVERY → DELIVERED (or CANCELLED)
+- State transitions with validation
+- Event publishing to RabbitMQ on each state change
+
+### API Gateway (Port 3000) - **MAIN ENTRY POINT**
+
+**All client requests should go through the API Gateway**
+
+| Endpoint | Method | Auth | Description | Rate Limit |
+|----------|--------|------|-------------|------------|
+| `/health` | GET | ❌ | Gateway health check | General |
+| `/stats/circuit-breakers` | GET | ❌ | Circuit breaker stats | General |
+| `/api/users/register` | POST | ❌ | Register user | Auth (5/15min) |
+| `/api/users/login` | POST | ❌ | Login user | Auth (5/15min) |
+| `/api/restaurants` | GET | 🔓 | List restaurants | General (100/15min) |
+| `/api/restaurants/:id` | GET | 🔓 | Get restaurant | General |
+| `/api/restaurants` | POST | ✅ | Create restaurant | Write (20/min) |
+| `/api/restaurants/:id` | PUT | ✅ | Update restaurant | Write |
+| `/api/restaurants/search` | GET | 🔓 | Search restaurants | General |
+| `/api/orders` | POST | ✅ | Create order | Write (20/min) |
+| `/api/orders` | GET | ✅ | List orders | General |
+| `/api/orders/:id` | GET | ✅ | Get order | General |
+| `/api/orders/:id/confirm` | PUT | ✅ | Confirm order | Write |
+| `/api/orders/:id/cancel` | PUT | ✅ | Cancel order | Write |
+
+**Resilience Features:**
+- **Circuit Breaker:** Automatically fails fast when backend services are down
+  - States: CLOSED (normal) → OPEN (failing fast) → HALF_OPEN (testing recovery)
+  - Thresholds: 50% error rate, 5 requests minimum
+  - Reset timeout: 30 seconds
+- **Rate Limiting:** Protects backend services from abuse
+  - General: 100 req/15min per IP
+  - Auth: 5 req/15min per IP (login/register)
+  - Write: 20 req/min per IP (create/update/delete)
+- **JWT Validation:** Centralized token verification
+- **Request Logging:** All requests logged with duration tracking
+
+**Legend:**
+- ✅ Auth Required (Bearer token)
+- 🔓 Optional Auth (works with or without token)
+- ❌ Public (no auth)
+
 ### Coming Soon
-- Order Service (Port 3003) - DAY 3
-- Driver Service (Port 3004) - DAY 4
-- Notification Service (Port 3005) - DAY 4
-- API Gateway (Port 3000) - DAY 4
+- Driver Service (Port 3004) - DAY 5
+- Notification Service (Port 3005) - DAY 5
 
 ## Development Workflow
 

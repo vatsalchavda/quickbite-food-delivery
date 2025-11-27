@@ -83,6 +83,8 @@
 2. [DAY 2: Restaurant Service & Caching](#day-2-restaurant-service--caching)
 3. [DAY 3: Order Service & Events](#day-3-order-service--events)
 4. [DAY 4: API Gateway & Resilience](#day-4-api-gateway--resilience)
+5. [Design Patterns Reference](#design-patterns-reference)
+6. [Interview Preparation Summary](#interview-preparation-summary)
 
 ---
 
@@ -430,6 +432,364 @@ if (!this.isConnected) {
 
 ---
 
+## DAY 4: API Gateway & Resilience
+
+### API Gateway Pattern
+
+**What:** Single entry point for all client requests that routes to appropriate backend services
+
+**Our Implementation:**
+```
+Client → API Gateway (3000) → User Service (3001)
+                            → Restaurant Service (3002)
+                            → Order Service (3003)
+```
+
+**Why API Gateway:**
+- **Single Entry Point:** Clients don't need to know about individual services
+- **Centralized Cross-Cutting Concerns:**
+  - Authentication/Authorization
+  - Rate limiting
+  - Logging and monitoring
+  - Request/response transformation
+- **Service Abstraction:** Backend services can change without affecting clients
+- **Simplified Client Code:** One base URL instead of multiple service endpoints
+
+**Trade-offs:**
+- ✅ Simplifies client development
+- ✅ Reduces client-service coupling
+- ✅ Centralized security and monitoring
+- ❌ Single point of failure (mitigate with clustering)
+- ❌ Additional network hop (adds latency)
+- ❌ Gateway can become bottleneck (scale horizontally)
+
+**Interview Question:** "Why use an API Gateway instead of direct service calls?"
+**Answer:** API Gateway provides a unified entry point that handles cross-cutting concerns like authentication, rate limiting, and routing. It decouples clients from backend service topology, simplifies client code, and enables centralized monitoring. Trade-offs include additional latency and potential bottleneck, which we mitigate through horizontal scaling and efficient routing.
+
+---
+
+### Circuit Breaker Pattern
+
+**What:** Prevents cascading failures by failing fast when a service is down
+
+**States:**
+1. **CLOSED** (Normal): Requests pass through, success/failure tracked
+2. **OPEN** (Failing): Requests fail immediately without calling service
+3. **HALF_OPEN** (Testing): Limited requests allowed to test if service recovered
+
+**Our Implementation (Opossum Library):**
+```javascript
+const CircuitBreaker = require('opossum');
+
+const breaker = new CircuitBreaker(httpCall, {
+  timeout: 5000,                    // Request timeout
+  errorThresholdPercentage: 50,     // Open if 50% fail
+  resetTimeout: 30000,              // Try recovery after 30s
+  rollingCountTimeout: 10000,       // 10s rolling window
+  volumeThreshold: 5                // Need 5 requests before opening
+});
+
+breaker.on('open', () => logger.error('Circuit OPENED'));
+breaker.on('halfOpen', () => logger.warn('Circuit HALF-OPEN'));
+breaker.on('close', () => logger.info('Circuit CLOSED'));
+```
+
+**Flow Example:**
+```
+1. Order Service is down
+2. First 5 requests fail (volumeThreshold)
+3. Circuit opens → Future requests fail immediately
+4. After 30s (resetTimeout) → Circuit goes to HALF_OPEN
+5. Test request succeeds → Circuit closes
+6. Normal operation resumes
+```
+
+**Why This Matters:**
+- **Fail Fast:** Don't wait for timeouts on dead services (5s → instant)
+- **Resource Protection:** Prevent thread/connection exhaustion
+- **Automatic Recovery:** Self-healing when service comes back
+- **User Experience:** Fast failures better than hanging requests
+
+**Interview Question:** "Explain the circuit breaker pattern and when to use it."
+**Answer:** Circuit breaker prevents cascading failures in distributed systems by failing fast when a service is unhealthy. It has three states: CLOSED (normal), OPEN (failing fast), and HALF_OPEN (testing recovery). Use it when calling external services or microservices to prevent resource exhaustion and improve user experience during failures. Configuration includes error thresholds, timeouts, and reset periods.
+
+---
+
+### Rate Limiting Strategies
+
+**What:** Limit number of requests per time window to prevent abuse and ensure fair resource allocation
+
+**Our Implementation (3-Tier Strategy):**
+
+**1. General API Limiter:**
+```javascript
+// 100 requests per 15 minutes per IP
+const generalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100
+});
+```
+- Applied to: All GET endpoints (browsing)
+- Purpose: Prevent excessive scraping/crawling
+
+**2. Authentication Limiter:**
+```javascript
+// 5 requests per 15 minutes per IP
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  skipSuccessfulRequests: true  // Only count failures
+});
+```
+- Applied to: Login/register endpoints
+- Purpose: Prevent brute force attacks
+- Note: Successful logins don't count toward limit
+
+**3. Write Operation Limiter:**
+```javascript
+// 20 requests per minute per IP
+const writeLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 20
+});
+```
+- Applied to: Create/update/delete endpoints
+- Purpose: Prevent spam and database overload
+
+**Rate Limiting Algorithms:**
+
+**Sliding Window (Our Choice):**
+- Tracks requests in rolling time window
+- Smooths out traffic spikes
+- More accurate than fixed window
+
+**Token Bucket (Alternative):**
+- Tokens added at fixed rate
+- Request consumes token
+- Allows bursts up to bucket size
+
+**Fixed Window (Simpler):**
+- Reset counter at fixed intervals
+- Can have "double dipping" at boundaries
+- Easier to implement but less accurate
+
+**Interview Question:** "How do you implement rate limiting in a distributed system?"
+**Answer:** Use Redis as shared state for distributed rate limiting. Store counters with expiry (TTL) per IP or user. Implement sliding window algorithm for accuracy. Have multiple tiers based on endpoint sensitivity (strict for auth, lenient for reads). Return 429 status with Retry-After header. Consider allowing burst traffic with token bucket algorithm.
+
+---
+
+### Request Routing & Proxying
+
+**What:** Forward requests from gateway to appropriate backend service
+
+**Our Approach (Axios with Circuit Breaker):**
+```javascript
+const callWithCircuitBreaker = async (serviceName, url, options) => {
+  const breaker = getCircuitBreaker(serviceName);
+  const data = await breaker.fire(url, options);
+  return data;
+};
+
+// Example: Route to Order Service
+router.post('/api/orders', authenticateToken, writeLimiter, async (req, res) => {
+  const data = await callWithCircuitBreaker(
+    'order-service',
+    'http://quickbite-order-service:3003/api/orders',
+    { method: 'POST', data: req.body }
+  );
+  res.status(201).json(data);
+});
+```
+
+**Alternative Approaches:**
+
+**1. HTTP Proxy Middleware:**
+```javascript
+const { createProxyMiddleware } = require('http-proxy-middleware');
+
+app.use('/api/orders', createProxyMiddleware({
+  target: 'http://order-service:3003',
+  changeOrigin: true
+}));
+```
+- Pros: Less code, streaming support
+- Cons: Harder to add circuit breaker
+
+**2. Service Mesh (Advanced):**
+- Istio/Linkerd handle routing at infrastructure level
+- Gateway becomes thinner
+- Better for large-scale systems
+
+**Why Axios + Circuit Breaker:**
+- ✅ Explicit control over request/response
+- ✅ Easy circuit breaker integration
+- ✅ Error handling and transformation
+- ✅ Works well for REST APIs
+
+**Interview Question:** "How do you route requests in an API Gateway?"
+**Answer:** Use HTTP client (Axios) to forward requests to backend services. Wrap calls in circuit breaker for resilience. Transform requests/responses as needed. Alternative approaches include HTTP proxy middleware for simpler forwarding or service mesh for infrastructure-level routing. Choose based on complexity and control requirements.
+
+---
+
+### Centralized JWT Validation
+
+**What:** Validate JWT tokens at gateway instead of each service
+
+**Benefits:**
+- **Single Source of Truth:** One place for auth logic
+- **Reduced Code Duplication:** Services don't need auth middleware
+- **Performance:** Validate once at gateway, not per service
+- **Security:** Expired/invalid tokens blocked before reaching services
+- **Simplified Services:** Backend services trust gateway
+
+**Implementation:**
+```javascript
+const authenticateToken = (req, res, next) => {
+  const token = req.headers['authorization']?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ message: 'Access token required' });
+  }
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = decoded;  // Attach user to request
+    next();
+  } catch (error) {
+    return res.status(403).json({ message: 'Invalid or expired token' });
+  }
+};
+```
+
+**Request Flow:**
+```
+1. Client sends request with Bearer token
+2. Gateway extracts and validates token
+3. If valid → Forward to backend with user context
+4. If invalid → Return 403 immediately
+5. Backend services trust gateway (no re-validation)
+```
+
+**Service-to-Service Communication:**
+- Gateway adds `X-User-Id` header from decoded token
+- Backend services use header instead of token validation
+- Assumes internal network is trusted
+
+**Trade-offs:**
+- ✅ Centralized security logic
+- ✅ Better performance (validate once)
+- ✅ Simplified services
+- ❌ Gateway must be trusted by all services
+- ❌ Services can't validate tokens independently
+
+**Interview Question:** "Should you validate JWT tokens at API Gateway or individual services?"
+**Answer:** Validate at gateway for centralized security and performance. Services receive user context from trusted headers. This works when gateway and services are in same trust boundary. For zero-trust architecture, services should re-validate. Trade-off is between simplicity and defense-in-depth.
+
+---
+
+### Request/Response Logging
+
+**What:** Log all requests through gateway for monitoring and debugging
+
+**Our Implementation:**
+```javascript
+app.use((req, res, next) => {
+  const start = Date.now();
+  
+  res.on('finish', () => {
+    const duration = Date.now() - start;
+    logger.info('API Gateway Request', {
+      method: req.method,
+      path: req.path,
+      status: res.statusCode,
+      duration: `${duration}ms`,
+      ip: req.ip
+    });
+  });
+  
+  next();
+});
+```
+
+**What to Log:**
+- **Request:** Method, path, IP, user ID (if authenticated)
+- **Response:** Status code, duration
+- **Errors:** Full error details, stack traces
+
+**What NOT to Log:**
+- ❌ Sensitive data (passwords, credit cards)
+- ❌ Full request/response bodies (too large)
+- ❌ PII without proper anonymization
+
+**Log Aggregation:**
+- Send logs to centralized system (ELK stack, CloudWatch)
+- Enable searching and alerting
+- Create dashboards for monitoring
+
+**Interview Question:** "What should you log in an API Gateway?"
+**Answer:** Log request metadata (method, path, IP), response status, duration, and errors. Don't log sensitive data or full bodies. Use structured logging (JSON) for easy parsing. Send to centralized log aggregation for monitoring and alerting. Gateway logging provides single view of all API traffic.
+
+---
+
+### Graceful Degradation in Gateway
+
+**What:** Continue operating when backend services fail
+
+**Strategies:**
+
+**1. Circuit Breaker (Fail Fast):**
+```javascript
+try {
+  const data = await callWithCircuitBreaker('order-service', url, options);
+  return data;
+} catch (error) {
+  if (error.message === 'Breaker is open') {
+    return res.status(503).json({
+      success: false,
+      message: 'Order service temporarily unavailable'
+    });
+  }
+}
+```
+
+**2. Fallback Responses:**
+```javascript
+// Return cached data if service is down
+if (circuitOpen) {
+  const cached = await cache.get(`fallback:${key}`);
+  if (cached) {
+    return res.json({ ...cached, source: 'cache-fallback' });
+  }
+}
+```
+
+**3. Partial Responses:**
+```javascript
+// If restaurant service down, still return orders without restaurant details
+const orders = await orderService.getOrders();
+// Skip restaurant enrichment if service unavailable
+return orders;
+```
+
+**4. Health Check Aggregation:**
+```javascript
+const services = ['user', 'restaurant', 'order'];
+const health = await Promise.allSettled(
+  services.map(svc => checkHealth(svc))
+);
+
+// Return overall health even if some services down
+return {
+  status: allHealthy ? 'healthy' : 'degraded',
+  services: health
+};
+```
+
+**Interview Question:** "How do you handle backend service failures in API Gateway?"
+**Answer:** Use circuit breaker to fail fast and prevent cascading failures. Return appropriate error responses (503 Service Unavailable). Consider fallback strategies like cached data or partial responses. Aggregate health checks to show degraded state. Always prefer degraded service over complete failure.
+
+---
+
 ## Design Patterns Reference
 
 ### Cache-Aside Pattern Implementation
@@ -471,6 +831,69 @@ class RestaurantRepository {
 
 ---
 
+### API Gateway Pattern (DAY 4)
+
+**Pattern:** Single entry point routing to multiple backend services
+
+**Implementation:**
+```javascript
+// Gateway routes requests with middleware
+app.use('/api/users', authLimiter, userRoutes);
+app.use('/api/restaurants', generalLimiter, restaurantRoutes);
+app.use('/api/orders', authenticateToken, writeLimiter, orderRoutes);
+
+// Each route uses circuit breaker
+const data = await callWithCircuitBreaker('service-name', url, options);
+```
+
+**Used in:** All client-facing API requests
+
+---
+
+### Circuit Breaker Pattern (DAY 4)
+
+**Pattern:** Fail fast when service is unhealthy, auto-recover when healthy
+
+**State Machine:**
+- CLOSED → Normal operation
+- OPEN → Failing fast (service down)
+- HALF_OPEN → Testing recovery
+
+**Implementation:**
+```javascript
+const breaker = new CircuitBreaker(httpCall, {
+  timeout: 5000,
+  errorThresholdPercentage: 50,
+  resetTimeout: 30000
+});
+```
+
+**Used in:** All API Gateway → Backend Service calls
+
+---
+
+### Rate Limiting Pattern (DAY 4)
+
+**Pattern:** Sliding window rate limiting per IP address
+
+**Tiers:**
+- General: 100 req/15min (browsing)
+- Auth: 5 req/15min (login/register)
+- Write: 20 req/min (create/update/delete)
+
+**Implementation:**
+```javascript
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true
+});
+```
+
+**Used in:** All API Gateway endpoints
+
+---
+
 ## Interview Preparation Summary
 
 ### Key Topics Covered
@@ -491,9 +914,22 @@ class RestaurantRepository {
    - Indexing strategies (text, geospatial, regular)
    - Read-heavy vs write-heavy optimization
 
-4. **Resilience Patterns**
+4. **Event-Driven Architecture**
+   - Event sourcing basics
+   - RabbitMQ pub/sub
+   - Topic exchanges and routing
+
+5. **Resilience Patterns**
+   - Circuit breaker (fail fast, auto-recovery)
+   - Rate limiting (multi-tier strategy)
    - Graceful degradation
-   - Fail-safe error handling
+   - Request timeout and retry logic
+
+6. **API Gateway Pattern**
+   - Centralized routing and authentication
+   - Cross-cutting concerns (logging, rate limiting)
+   - Service abstraction
+   - Backend service protection
 
 ### Common Interview Questions
 
@@ -519,16 +955,29 @@ class RestaurantRepository {
 - Consider access patterns over normalization
 - Balance read vs write performance
 
+**Q: "Explain the circuit breaker pattern and when to use it."**
+**A:** Circuit breaker prevents cascading failures by failing fast when a service is unhealthy. Three states: CLOSED (normal), OPEN (failing fast), HALF_OPEN (testing recovery). Use when calling external services or microservices to prevent resource exhaustion and improve UX during failures. Configure error thresholds, timeouts, and reset periods.
+
+**Q: "Why use an API Gateway instead of direct service calls?"**
+**A:** API Gateway provides unified entry point for cross-cutting concerns (auth, rate limiting, logging). Decouples clients from backend topology, simplifies client code, enables centralized monitoring. Trade-offs include additional latency and potential bottleneck, mitigated through horizontal scaling.
+
+**Q: "How do you implement rate limiting in a distributed system?"**
+**A:** Use Redis as shared state for distributed counters. Implement sliding window algorithm for accuracy. Multiple tiers based on endpoint sensitivity (strict for auth, lenient for reads). Return 429 status with Retry-After header. Consider token bucket for burst traffic.
+
+**Q: "What happens when your API Gateway fails?"**
+**A:** Gateway is single point of failure. Mitigation: (1) Run multiple gateway instances behind load balancer, (2) Health checks and auto-restart, (3) Circuit breakers prevent gateway overload, (4) Monitoring and alerting for quick response. Gateway should be stateless for easy horizontal scaling.
+
 ---
 
 ## TODO: Topics to Add
 
-- [ ] DAY 3: Event-driven architecture concepts
-- [ ] DAY 4: Circuit breaker pattern
-- [ ] DAY 5: Saga pattern for distributed transactions
-- [ ] DAY 6-9: Kubernetes concepts
+- [ ] DAY 5: Driver Service & Real-time Tracking
+- [ ] DAY 5: Notification Service & Event Consumers
+- [ ] DAY 6-9: Kubernetes concepts (Deployments, Services, ConfigMaps, Secrets)
+- [ ] DAY 6-9: Kustomize for environment-specific configs
+- [ ] Final: Saga pattern for distributed transactions
 - [ ] Final: Complete interview guide
 
 ---
 
-**Last Updated:** Day 2 - Restaurant Service & Caching
+**Last Updated:** Day 4 - API Gateway & Resilience
