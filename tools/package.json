@@ -10,7 +10,11 @@
     "seed:restaurants": "node seed-restaurants.js seed",
     "seed:restaurants:20": "node seed-restaurants.js seed 20",
     "clean:restaurants": "node seed-restaurants.js clean",
-    "reset:restaurants": "node seed-restaurants.js reset"
+    "reset:restaurants": "node seed-restaurants.js reset",
+    "seed:orders": "node seed-orders.js seed",
+    "seed:orders:50": "node seed-orders.js seed 50",
+    "clean:orders": "node seed-orders.js clean",
+    "reset:orders": "node seed-orders.js reset"
   },
   "dependencies": {
     "mongoose": "^8.0.3",
