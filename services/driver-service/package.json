@@ -1,0 +1,27 @@
+{
+  "name": "driver-service",
+  "version": "1.0.0",
+  "description": "QuickBite Driver Service with location tracking and geospatial queries",
+  "main": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mongoose": "^8.0.3",
+    "amqplib": "^0.10.3",
+    "helmet": "^7.1.0",
+    "cors": "^2.8.5",
+    "winston": "^3.11.0",
+    "express-rate-limit": "^7.1.5",
+    "swagger-jsdoc": "^6.2.8",
+    "swagger-ui-express": "^5.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

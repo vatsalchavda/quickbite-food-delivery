@@ -189,6 +189,31 @@ services:
       retries: 3
       start_period: 10s
 
+  # Driver Service
+  quickbite-driver-service:
+    build:
+      context: .
+      dockerfile: services/driver-service/Dockerfile
+    container_name: quickbite-driver-service
+    restart: unless-stopped
+    ports:
+      - "${DRIVER_SERVICE_PORT:-3004}:3004"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3004
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      MONGODB_URI: mongodb://${MONGO_ROOT_USERNAME}:${MONGO_ROOT_PASSWORD}@quickbite-mongodb:27017/${DRIVER_DB:-driver_service}?authSource=admin
+    depends_on:
+      - quickbite-mongodb
+    networks:
+      - quickbite-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3004/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
 volumes:
   mongodb_data:
   redis_data:
