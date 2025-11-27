@@ -223,15 +223,15 @@ docker-compose down
 ### Access Management UIs
 - Mongo Express: http://localhost:8081
 - Redis Commander: http://localhost:8082
-- RabbitMQ Management: http://localhost:15672 (admin/admin123)
+- RabbitMQ Management: http://localhost:15672 (username: admin, password: your RABBITMQ_PASSWORD from .env)
 
 ### Access Services
 - **API Gateway (Main Entry Point):** http://localhost:3000
 - User Service: http://localhost:3001 (internal)
 - Restaurant Service: http://localhost:3002 (internal)
 - Order Service: http://localhost:3003 (internal)
-- Driver Service: http://localhost:3004 (coming soon)
-- Notification Service: http://localhost:3005 (coming soon)
+- Driver Service: http://localhost:3004 (internal)
+- Notification Service: http://localhost:3005 (internal - event consumer)
 
 ## Services
 
@@ -241,8 +241,8 @@ docker-compose down
 | User Service | 3001 | Authentication & user management | ✅ Complete |
 | Restaurant Service | 3002 | Restaurant & menu management with Redis caching | ✅ Complete |
 | Order Service | 3003 | Order processing & state management with event publishing | ✅ Complete |
-| Driver Service | 3004 | Driver tracking & assignment | 🚧 Coming Soon |
-| Notification Service | 3005 | Event-driven notifications | 🚧 Coming Soon |
+| Driver Service | 3004 | Driver tracking & geospatial queries | ✅ Complete |
+| Notification Service | 3005 | Event-driven multi-channel notifications | ✅ Complete |
 
 ## Tech Stack
 
@@ -303,7 +303,7 @@ quickbite-food-delivery/
 | `/api/restaurants` | POST | ❌ | Create restaurant |
 | `/api/restaurants/:id` | GET | ❌ | Get restaurant by ID |
 | `/api/restaurants/:id` | PUT | ❌ | Update restaurant |
-| `/api/restaurants/:id` | DELETE | ❌ | Delete restaurant (soft delete) |
+| `/api/restaurants/:id` | DELETE | ❌ | Delete restaurant (sets isActive=false) |
 | `/api/restaurants/search` | GET | ❌ | Search restaurants by text |
 | `/api/restaurants/cuisine/:cuisine` | GET | ❌ | Get by cuisine type |
 | `/api/restaurants/:id/menu` | POST | ❌ | Add menu item |
@@ -338,6 +338,86 @@ quickbite-food-delivery/
 - 7 states: PENDING → CONFIRMED → PREPARING → READY → OUT_FOR_DELIVERY → DELIVERED (or CANCELLED)
 - State transitions with validation
 - Event publishing to RabbitMQ on each state change
+
+### Driver Service (Port 3004)
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/health` | GET | ❌ | Health check |
+| `/api/drivers` | POST | ❌ | Create driver |
+| `/api/drivers` | GET | ❌ | Get all drivers |
+| `/api/drivers/:id` | GET | ❌ | Get driver by ID |
+| `/api/drivers/:id/location` | PUT | ❌ | Update driver location |
+| `/api/drivers/nearby` | GET | ❌ | Find nearby drivers |
+| `/api/drivers/:id/status` | PUT | ❌ | Update driver status |
+| `/api/drivers/:id/assign` | POST | ❌ | Assign order to driver |
+| `/api/drivers/:id/complete` | POST | ❌ | Complete delivery |
+| `/api/drivers/:id/rating` | PUT | ❌ | Update driver rating |
+
+**Geospatial Features:**
+- **2dsphere Index:** MongoDB geospatial indexing for location queries
+- **GeoJSON Format:** Store locations as `{ type: 'Point', coordinates: [lng, lat] }`
+- **Nearby Search:** Find available drivers within N kilometers (default 5km)
+- **Location History:** Track last 100 location updates per driver
+- **Performance:** O(log n) queries with automatic distance sorting
+
+**Example - Find Nearby Drivers:**
+```bash
+# Find drivers within 5km of San Francisco coordinates
+curl "http://localhost:3004/api/drivers/nearby?longitude=-122.4194&latitude=37.7749&maxDistance=5"
+```
+
+**Example - Update Driver Location:**
+```bash
+curl -X PUT http://localhost:3004/api/drivers/DRIVER_ID/location \
+  -H "Content-Type: application/json" \
+  -d '{
+    "longitude": -122.4194,
+    "latitude": 37.7749
+  }'
+```
+
+**Driver Status Values:**
+- `available` - Ready to accept orders
+- `busy` - Currently on delivery
+- `offline` - Not accepting orders
+
+### Notification Service (Port 3005)
+
+**Event Consumer Service** - No direct HTTP API, consumes RabbitMQ events
+
+| Endpoint | Method | Auth | Description |
+|----------|--------|------|-------------|
+| `/health` | GET | ❌ | Health check |
+
+**Event-Driven Features:**
+- **RabbitMQ Consumer:** Subscribes to `order.*` events (order.created, order.confirmed, etc.)
+- **Multi-Channel:** Email, SMS, Push notifications
+- **Templates:** 7 event templates with variable substitution
+- **User Preferences:** Respects email/SMS opt-in settings
+- **Idempotency:** Handles duplicate messages from at-least-once delivery
+- **Dead Letter Queue:** Failed messages sent to DLQ for manual review
+
+**Events Consumed:**
+- `order.created` - Send order confirmation
+- `order.confirmed` - Notify customer and restaurant
+- `order.preparing` - Update customer
+- `order.ready` - Notify customer to pick up
+- `order.out_for_delivery` - Send delivery tracking link
+- `order.delivered` - Delivery confirmation
+- `order.cancelled` - Cancellation notification
+
+**How It Works:**
+1. Order Service publishes event to RabbitMQ (e.g., `order.created`)
+2. Notification Service receives message from queue
+3. Renders notification template with order data
+4. Sends to appropriate channels (email, SMS, push) based on user preferences
+5. Acknowledges message to RabbitMQ (removes from queue)
+
+**View Logs:**
+```bash
+docker logs quickbite-notification-service -f
+```
 
 ### API Gateway (Port 3000) - **MAIN ENTRY POINT**
 
@@ -376,10 +456,6 @@ quickbite-food-delivery/
 - ✅ Auth Required (Bearer token)
 - 🔓 Optional Auth (works with or without token)
 - ❌ Public (no auth)
-
-### Coming Soon
-- Driver Service (Port 3004) - DAY 5
-- Notification Service (Port 3005) - DAY 5
 
 ## Development Workflow
 

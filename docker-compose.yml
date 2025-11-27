@@ -214,6 +214,31 @@ services:
       retries: 3
       start_period: 10s
 
+  # Notification Service
+  quickbite-notification-service:
+    build:
+      context: .
+      dockerfile: services/notification-service/Dockerfile
+    container_name: quickbite-notification-service
+    restart: unless-stopped
+    ports:
+      - "${NOTIFICATION_SERVICE_PORT:-3005}:3005"
+    environment:
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 3005
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      RABBITMQ_URL: amqp://${RABBITMQ_USER}:${RABBITMQ_PASSWORD}@quickbite-rabbitmq:5672
+    depends_on:
+      - quickbite-rabbitmq
+    networks:
+      - quickbite-network
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:3005/health', (r) => {process.exit(r.statusCode === 200 ? 0 : 1)})"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
 volumes:
   mongodb_data:
   redis_data:
