@@ -1,12 +1,11 @@
 # QuickBite Food Delivery
 
-A microservices-based food delivery platform built with Node.js, Express, MongoDB, Redis, RabbitMQ, and Kubernetes.
+A microservices-based food delivery platform built with Node.js, Express, MongoDB, Redis, and RabbitMQ.
 
 ## Quick Start
 
 ### Prerequisites
 - Docker & Docker Compose
-- Kubernetes (Minikube/Docker Desktop) (optional, for K8s deployment)
 
 ### 1. Setup Environment Variables
 
@@ -251,8 +250,8 @@ docker-compose down
 **Cache:** Redis  
 **Message Broker:** RabbitMQ  
 **API Gateway:** Express.js, Axios, Opossum (circuit breaker), JWT validation  
-**Frontend:** React, Redux Toolkit, React Bootstrap  
-**DevOps:** Docker, Kubernetes, Kustomize  
+**Frontend:** React 18, Redux Toolkit, React Bootstrap, Nginx  
+**DevOps:** Docker, Docker Compose  
 
 ## Architecture
 
@@ -266,18 +265,26 @@ docker-compose down
   - Rate limiting (3 tiers: general, auth, write)
   - Circuit breaker pattern (fail-fast, automatic recovery)
   - Request/response logging and monitoring
-- Containerized deployment with Kubernetes
+- **Frontend SPA served by Nginx with API proxy**
+- Containerized deployment with Docker
 
 ## Project Structure
 
 ```
 quickbite-food-delivery/
-├── services/           # Microservices
-├── frontend/          # React application
-├── shared/            # Shared utilities
-├── infrastructure/    # Docker & K8s configs
-├── tools/             # Database seeding scripts
-└── docs/             # Documentation
+├── services/              # Microservices
+│   ├── api-gateway/       # API Gateway (Port 3000)
+│   ├── user-service/      # User & Auth (Port 3001)
+│   ├── restaurant-service/# Restaurants & Menu (Port 3002)
+│   ├── order-service/     # Orders (Port 3003)
+│   ├── driver-service/    # Drivers & Location (Port 3004)
+│   └── notification-service/ # Notifications (Port 3005)
+├── frontend/              # React SPA
+│   └── customer-app/      # Customer frontend (Port 5173)
+├── shared/                # Shared utilities
+├── infrastructure/        # Docker configs
+├── tools/                 # Database seeding scripts
+└── docs/                  # Documentation
 ```
 
 ## API Endpoints
@@ -457,6 +464,36 @@ docker logs quickbite-notification-service -f
 - 🔓 Optional Auth (works with or without token)
 - ❌ Public (no auth)
 
+### Customer Frontend (Port 5173)
+
+**URL:** http://localhost:5173
+
+**Features:**
+- 🔐 User registration and login with JWT authentication
+- 🍔 Browse restaurants with search functionality
+- 📋 View restaurant menus with vegetarian indicators
+- 🛒 Shopping cart with quantity management
+- 💳 Complete checkout with delivery address and payment method
+- 📦 Order history with real-time status tracking
+- 📱 Responsive design with React Bootstrap
+
+**Tech Stack:**
+- React 18 + Redux Toolkit for state management
+- React Router for client-side routing
+- Nginx as reverse proxy (production build)
+- Vite for development server and build tool
+- Proxies `/api` requests to API Gateway (port 3000)
+
+**Local Development:**
+```bash
+cd frontend/customer-app
+npm install
+npm run dev
+```
+
+**Production (Docker):**
+The frontend is automatically built and served via Nginx when using `docker-compose up`
+
 ## Development Workflow
 
 ### View Logs
@@ -466,10 +503,20 @@ docker-compose logs -f
 
 # Specific service
 docker-compose logs -f user-service
+
+# Frontend
+docker-compose logs -f quickbite-customer-app
 ```
 
 ### Rebuild After Code Changes
 ```bash
+# Backend services
+docker-compose up -d --build user-service
+
+# Frontend
+docker-compose up -d --build quickbite-customer-app
+
+# All services
 docker-compose up -d --build
 ```
 
@@ -487,6 +534,6 @@ docker-compose down -v      # Stop and remove volumes (clean slate)
 
 ## Documentation
 
-- **Technical Concepts:** `docs/KNOWLEDGE_BASE.md` - Distributed systems patterns, caching strategies, interview prep
+- **Technical Concepts:** `docs/KNOWLEDGE_BASE.md` - Distributed systems patterns, caching strategies, design decisions
 - **API Documentation:** http://localhost:3001/api-docs (Swagger UI)
 - **Seeding Tools:** `tools/` directory with multiple seeding options

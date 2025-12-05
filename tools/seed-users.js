@@ -59,7 +59,7 @@ async function generateUser(index) {
   return {
     name: `${firstName} ${lastName}`,
     email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}${index}@example.com`,
-    password: await bcrypt.hash('password123', 12), // Default password for test users
+    password: await bcrypt.hash('password123', 12), // Default password for development
     phone: `+1${randomNumber(200, 999)}${randomNumber(100, 999)}${randomNumber(1000, 9999)}`,
     role: 'customer',
     address: {
@@ -115,8 +115,8 @@ async function seedUsers(count = 10) {
     console.log('\n📋 Credentials:');
     console.log(`   👤 Admin: vatsalchavda2@gmail.com / superDuperSecret@1`);
     if (users.length > 1) {
-      console.log(`   👤 Test User: ${users[1]?.email} / password123`);
-      console.log('\n💡 Random test users have password: password123');
+      console.log(`   👤 Sample User: ${users[1]?.email} / password123`);
+      console.log('\n💡 All seeded users have password: password123');
     }
     
   } catch (error) {

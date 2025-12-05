@@ -2,7 +2,7 @@ const { createClient } = require('redis');
 
 /**
  * RedisCache - Wrapper class for Redis operations with cache-aside pattern
- * See docs/KNOWLEDGE_BASE.md for caching concepts and interview prep
+ * See docs/KNOWLEDGE_BASE.md for caching concepts and design patterns
  */
 class RedisCache {
   constructor(logger) {

@@ -11,7 +11,7 @@ const MONGO_URI = `mongodb://${process.env.MONGO_ROOT_USERNAME}:${process.env.MO
  * Generate random order data
  * 
  * Note: In a real system, these IDs would come from User and Restaurant services
- * For demo purposes, we're generating random MongoDB ObjectIds
+ * For development and testing, we're generating random MongoDB ObjectIds
  */
 const generateOrder = () => {
   const deliveryType = faker.helpers.arrayElement(['DELIVERY', 'PICKUP']);
@@ -61,7 +61,7 @@ const generateOrder = () => {
     }
   } : undefined;
   
-  // Random order status for demo
+  // Random order status for seeding
   const status = faker.helpers.arrayElement([
     'PENDING',
     'CONFIRMED',

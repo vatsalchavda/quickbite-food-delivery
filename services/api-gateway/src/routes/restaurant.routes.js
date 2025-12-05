@@ -30,6 +30,29 @@ router.get('/', optionalAuth, async (req, res) => {
 });
 
 /**
+ * GET /api/restaurants/search
+ * Search restaurants (public)
+ * IMPORTANT: Must be before /:id route to avoid matching "search" as an ID
+ */
+router.get('/search', optionalAuth, async (req, res) => {
+  try {
+    const queryString = new URLSearchParams(req.query).toString();
+    const data = await callWithCircuitBreaker(
+      'restaurant-service',
+      `${RESTAURANT_SERVICE_URL}/api/restaurants/search?${queryString}`,
+      { method: 'GET' }
+    );
+    res.json(data);
+  } catch (error) {
+    logger.error('Search restaurants failed', { error: error.message });
+    res.status(error.response?.status || 503).json({
+      success: false,
+      message: error.message
+    });
+  }
+});
+
+/**
  * GET /api/restaurants/:id
  * Get restaurant by ID (public)
  */
@@ -91,28 +114,6 @@ router.put('/:id', authenticateToken, writeLimiter, async (req, res) => {
     res.json(data);
   } catch (error) {
     logger.error('Update restaurant failed', { error: error.message });
-    res.status(error.response?.status || 503).json({
-      success: false,
-      message: error.message
-    });
-  }
-});
-
-/**
- * GET /api/restaurants/search
- * Search restaurants (public)
- */
-router.get('/search', optionalAuth, async (req, res) => {
-  try {
-    const queryString = new URLSearchParams(req.query).toString();
-    const data = await callWithCircuitBreaker(
-      'restaurant-service',
-      `${RESTAURANT_SERVICE_URL}/api/restaurants/search?${queryString}`,
-      { method: 'GET' }
-    );
-    res.json(data);
-  } catch (error) {
-    logger.error('Search restaurants failed', { error: error.message });
     res.status(error.response?.status || 503).json({
       success: false,
       message: error.message

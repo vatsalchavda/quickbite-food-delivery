@@ -146,7 +146,7 @@ const restaurantSchema = new mongoose.Schema(
     },
     ownerId: {
       type: mongoose.Schema.Types.ObjectId,
-      required: false, // Optional for demo - in production would be required
+      required: false, // Optional - would be required with restaurant owner authentication
       index: true,
     },
   },

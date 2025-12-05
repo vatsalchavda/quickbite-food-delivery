@@ -239,6 +239,26 @@ services:
       retries: 3
       start_period: 10s
 
+  # Customer Frontend App
+  quickbite-customer-app:
+    build:
+      context: .
+      dockerfile: frontend/customer-app/Dockerfile
+    container_name: quickbite-customer-app
+    restart: unless-stopped
+    ports:
+      - "${CUSTOMER_APP_PORT:-5173}:80"
+    depends_on:
+      - quickbite-api-gateway
+    networks:
+      - quickbite-network
+    healthcheck:
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:80/health"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+
 volumes:
   mongodb_data:
   redis_data:
