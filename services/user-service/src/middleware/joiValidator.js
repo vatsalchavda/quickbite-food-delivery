@@ -3,7 +3,7 @@ const { ValidationError } = require('../../shared/utils/errorHandler');
 
 // Validate request using Joi schemas for body/query/params (any combination)
 // Usage: validate({ body: schema, query: schema, params: schema })
-module.exports.validate = (schemas = {}) => {
+const validate = (schemas = {}) => {
   return (req, res, next) => {
     try {
       if (schemas.body) {
@@ -30,3 +30,5 @@ module.exports.validate = (schemas = {}) => {
     }
   };
 };
+
+module.exports = { validate };

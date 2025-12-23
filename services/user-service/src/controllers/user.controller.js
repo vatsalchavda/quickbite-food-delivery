@@ -25,3 +25,15 @@ exports.listUsers = asyncHandler(async (req, res) => {
   const result = await userService.listUsers(req.query);
   res.json({ success: true, data: result });
 });
+
+// Profile endpoints (accessible to authenticated users)
+exports.getProfile = asyncHandler(async (req, res) => {
+  const user = await userService.getUserById(req.user.id);
+  res.json({ success: true, data: { user } });
+});
+
+exports.updateProfile = asyncHandler(async (req, res) => {
+  const user = await userService.updateUserById(req.user.id, req.body);
+  req.logger.info('User profile updated', { userId: user._id });
+  res.json({ success: true, message: 'Profile updated successfully', data: { user } });
+});

@@ -1,7 +1,7 @@
 const User = require('../models/User');
 const { ConflictError, NotFoundError } = require('../../shared/utils/errorHandler');
 
-const buildFilters = ({ role, isActive, search, city, state }) => {
+function buildFilters({ role, isActive, search, city, state }) {
   const filter = {};
   if (role) filter.role = role;
   if (typeof isActive === 'boolean') filter.isActive = isActive;
@@ -12,9 +12,9 @@ const buildFilters = ({ role, isActive, search, city, state }) => {
     filter.$or = [{ name: regex }, { email: regex }];
   }
   return filter;
-};
+}
 
-const buildSort = (sortStr = '-createdAt') => {
+function buildSort(sortStr = '-createdAt') {
   const allowList = new Set(['createdAt', 'name', 'email']);
   return sortStr
     .split(',')
@@ -28,7 +28,7 @@ const buildSort = (sortStr = '-createdAt') => {
     })
     .filter(Boolean)
     .reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {});
-};
+}
 
 async function createUser(payload) {
   try {

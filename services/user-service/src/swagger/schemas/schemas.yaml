@@ -1,0 +1,101 @@
+components:
+  schemas:
+    User:
+      type: object
+      properties:
+        _id:
+          type: string
+          description: User ID
+        name:
+          type: string
+          description: User full name
+        email:
+          type: string
+          format: email
+          description: User email address
+        phone:
+          type: string
+          description: User phone number (10 digits)
+          pattern: '^\d{10}$'
+        role:
+          type: string
+          enum: [customer, admin]
+          description: User role
+        address:
+          type: object
+          properties:
+            street:
+              type: string
+            city:
+              type: string
+            state:
+              type: string
+            zipCode:
+              type: string
+        isActive:
+          type: boolean
+          description: User account status
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+
+    Error:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: false
+        message:
+          type: string
+          description: Error message
+
+    UserWithToken:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        message:
+          type: string
+        data:
+          type: object
+          properties:
+            user:
+              $ref: '#/components/schemas/User'
+            token:
+              type: string
+              example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+
+    UserListResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+          example: true
+        data:
+          type: object
+          properties:
+            items:
+              type: array
+              items:
+                $ref: '#/components/schemas/User'
+            meta:
+              type: object
+              properties:
+                total:
+                  type: integer
+                page:
+                  type: integer
+                pages:
+                  type: integer
+                limit:
+                  type: integer
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

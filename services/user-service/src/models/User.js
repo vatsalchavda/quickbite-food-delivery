@@ -50,6 +50,15 @@ const userSchema = new mongoose.Schema(
   }
 );
 
+// Create indexes for common queries
+userSchema.index({ email: 1 }, { unique: true });
+userSchema.index({ role: 1 });
+userSchema.index({ isActive: 1 });
+userSchema.index({ createdAt: -1 });
+userSchema.index({ 'address.city': 1 });
+userSchema.index({ 'address.state': 1 });
+userSchema.index({ role: 1, isActive: 1 }); // Compound index for admin queries
+
 // Hash password before saving
 userSchema.pre('save', async function (next) {
   if (!this.isModified('password')) return next();

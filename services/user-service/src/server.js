@@ -1,8 +1,17 @@
 require('dotenv').config();
+const { validateEnv } = require('./config/env');
 const createLogger = require('../shared/utils/logger');
 const EventPublisher = require('../shared/events/EventPublisher');
 const connectDB = require('./config/database');
 const createApp = require('./app');
+
+// Validate environment variables on startup
+try {
+  validateEnv();
+} catch (error) {
+  console.error('Environment validation failed:', error.message);
+  process.exit(1);
+}
 
 const logger = createLogger('user-service');
 const eventPublisher = new EventPublisher(logger);
@@ -29,10 +38,37 @@ const startServer = async () => {
     // Graceful shutdown
     const shutdown = async () => {
       logger.info('Shutting down gracefully...');
+      
+      // Set a timeout for graceful shutdown
+      const shutdownTimeout = setTimeout(() => {
+        logger.error('Forced shutdown after timeout');
+        process.exit(1);
+      }, 30000); // 30 seconds timeout
+
       server.close(async () => {
-        await eventPublisher.close();
-        process.exit(0);
+        clearTimeout(shutdownTimeout);
+        logger.info('HTTP server closed');
+        
+        try {
+          await eventPublisher.close();
+          logger.info('RabbitMQ connection closed');
+          
+          await require('mongoose').connection.close();
+          logger.info('MongoDB connection closed');
+          
+          logger.info('Graceful shutdown completed');
+          process.exit(0);
+        } catch (error) {
+          logger.error('Error during shutdown:', { error: error.message });
+          process.exit(1);
+        }
       });
+
+      // If server hasn't finished in 20 seconds, force close connections
+      setTimeout(() => {
+        logger.warn('Forcing server shutdown...');
+        server.closeAllConnections();
+      }, 20000);
     };
 
     process.on('SIGTERM', shutdown);

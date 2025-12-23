@@ -1,16 +1,21 @@
 const express = require('express');
 const { protect, authorize } = require('../middleware/auth');
 const { validate } = require('../middleware/joiValidator');
+const { generalLimiter, createUserLimiter } = require('../middleware/rateLimiter');
 const userController = require('../controllers/user.controller');
 const schemas = require('../validators/user.validation');
 
 const router = express.Router();
+
+// Apply general rate limiting to all user routes
+router.use(generalLimiter);
 
 // Create user (admin only)
 router.post(
   '/',
   protect,
   authorize('admin'),
+  createUserLimiter,
   validate({ body: schemas.createUser }),
   userController.createUser
 );
