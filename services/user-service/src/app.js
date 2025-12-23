@@ -6,6 +6,7 @@ const swaggerSpec = require('./config/swagger');
 const correlationIdMiddleware = require('../shared/middleware/correlationId');
 const { errorHandler } = require('../shared/utils/errorHandler');
 const authRoutes = require('./routes/authRoutes');
+const userRoutes = require('./routes/user.routes');
 
 const createApp = (logger, eventPublisher) => {
   const app = express();
@@ -52,6 +53,7 @@ const createApp = (logger, eventPublisher) => {
 
   // Routes
   app.use('/api/auth', authRoutes);
+  app.use('/api/users', userRoutes);
 
   // 404 handler
   app.use((req, res) => {

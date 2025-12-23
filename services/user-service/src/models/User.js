@@ -27,7 +27,7 @@ const userSchema = new mongoose.Schema(
     phone: {
       type: String,
       required: [true, 'Phone number is required'],
-      match: [/^\+?[\d\s-()]+$/, 'Please provide a valid phone number'],
+      match: [/^\d{10}$/, 'Please provide a valid 10-digit phone number'],
     },
     role: {
       type: String,
@@ -39,10 +39,6 @@ const userSchema = new mongoose.Schema(
       city: String,
       state: String,
       zipCode: String,
-      coordinates: {
-        lat: Number,
-        lng: Number,
-      },
     },
     isActive: {
       type: Boolean,
@@ -73,5 +69,22 @@ userSchema.methods.toJSON = function () {
   delete user.password;
   return user;
 };
+
+// Pre-hook for insertMany to hash passwords
+userSchema.pre('insertMany', async function (next, docs) {
+  try {
+    for (const doc of docs) {
+      if (doc.password) {
+        doc.password = await bcrypt.hash(doc.password, 12);
+      }
+      if (doc.email) {
+        doc.email = doc.email.toLowerCase().trim();
+      }
+    }
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
 
 module.exports = mongoose.model('User', userSchema);

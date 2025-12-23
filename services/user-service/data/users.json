@@ -1,0 +1,184 @@
+[
+  {
+    "name": "Carol Nguyen",
+    "email": "carol.nguyen@example.com",
+    "password": "Admin@123",
+    "phone": "5550101002",
+    "role": "admin",
+    "address": {
+      "street": "789 Elm St",
+      "city": "Chicago",
+      "state": "IL",
+      "zipCode": "60601"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Vatsal Chavda",
+    "email": "vatsalchavda2@gmail.com",
+    "password": "Password@123!",
+    "phone": "6135823625",
+    "role": "admin",
+    "address": {
+      "street": "107 Banner Rd",
+      "city": "Ottawa",
+      "state": "ON",
+      "zipCode": "10001"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Alice Johnson",
+    "email": "alice.johnson@example.com",
+    "password": "Passw0rd!",
+    "phone": "5550101000",
+    "role": "customer",
+    "address": {
+      "street": "123 Main St",
+      "city": "New York",
+      "state": "NY",
+      "zipCode": "10001"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Bob Smith",
+    "email": "bob.smith@example.com",
+    "password": "Secure123!",
+    "phone": "5550101001",
+    "role": "customer",
+    "address": {
+      "street": "456 Oak Ave",
+      "city": "Los Angeles",
+      "state": "CA",
+      "zipCode": "90001"
+    },
+    "isActive": true
+  },
+  {
+    "name": "David Lee",
+    "email": "david.lee@example.com",
+    "password": "MySecret99",
+    "phone": "5550101003",
+    "role": "customer",
+    "address": {
+      "street": "321 Pine Rd",
+      "city": "Houston",
+      "state": "TX",
+      "zipCode": "77001"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Eva Martinez",
+    "email": "eva.martinez@example.com",
+    "password": "Qwerty!7",
+    "phone": "5550101004",
+    "role": "customer",
+    "address": {
+      "street": "555 Maple Dr",
+      "city": "Seattle",
+      "state": "WA",
+      "zipCode": "98101"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Frank O'Connor",
+    "email": "frank.oconnor@example.com",
+    "password": "Strong#45",
+    "phone": "5550101005",
+    "role": "customer",
+    "address": {
+      "street": "12 Beacon St",
+      "city": "Boston",
+      "state": "MA",
+      "zipCode": "02108"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Grace Kim",
+    "email": "grace.kim@example.com",
+    "password": "Grace@2024",
+    "phone": "5550101006",
+    "role": "customer",
+    "address": {
+      "street": "77 Peachtree St",
+      "city": "Atlanta",
+      "state": "GA",
+      "zipCode": "30303"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Henry Adams",
+    "email": "henry.adams@example.com",
+    "password": "Henry#001",
+    "phone": "5550101007",
+    "role": "customer",
+    "address": {
+      "street": "200 Biscayne Blvd",
+      "city": "Miami",
+      "state": "FL",
+      "zipCode": "33131"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Isabella Rossi",
+    "email": "isabella.rossi@example.com",
+    "password": "Bella*88",
+    "phone": "5550101008",
+    "role": "customer",
+    "address": {
+      "street": "1000 16th St",
+      "city": "Denver",
+      "state": "CO",
+      "zipCode": "80202"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Jack Wilson",
+    "email": "jack.wilson@example.com",
+    "password": "Jack!777",
+    "phone": "5550101009",
+    "role": "customer",
+    "address": {
+      "street": "1 N Central Ave",
+      "city": "Phoenix",
+      "state": "AZ",
+      "zipCode": "85004"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Karen Liu",
+    "email": "karen.liu@example.com",
+    "password": "Karen@001",
+    "phone": "5550101010",
+    "role": "customer",
+    "address": {
+      "street": "30 Market St",
+      "city": "Philadelphia",
+      "state": "PA",
+      "zipCode": "19104"
+    },
+    "isActive": true
+  },
+  {
+    "name": "Leo Hernandez",
+    "email": "leo.hernandez@example.com",
+    "password": "Leo#2025",
+    "phone": "5550101011",
+    "role": "customer",
+    "address": {
+      "street": "200 Las Vegas Blvd",
+      "city": "Las Vegas",
+      "state": "NV",
+      "zipCode": "89101"
+    },
+    "isActive": true
+  }
+]
