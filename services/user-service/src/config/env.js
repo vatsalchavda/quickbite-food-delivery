@@ -5,6 +5,8 @@ const envSchema = Joi.object({
   NODE_ENV: Joi.string().valid('development', 'production', 'test').default('development'),
   PORT: Joi.number().default(3001),
   LOG_LEVEL: Joi.string().valid('error', 'warn', 'info', 'debug').default('info'),
+  API_VERSION: Joi.string().pattern(/^v\d+$/).default('v1'),
+  API_BASE_PATH: Joi.string().default('/api'),
   
   // MongoDB
   MONGODB_URI: Joi.string().required(),

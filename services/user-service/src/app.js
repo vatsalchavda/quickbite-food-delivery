@@ -6,7 +6,9 @@ const swaggerSpec = require('./config/swagger');
 const correlationIdMiddleware = require('../shared/middleware/correlationId');
 const { errorHandler } = require('../shared/utils/errorHandler');
 const authRoutes = require('./routes/authRoutes');
-const userRoutes = require('./routes/user.routes');
+const userRouter = require('./routes/user.routes');
+const { API_BASE_PATH, API_VERSION } = require('./config/env').validateEnv();
+const apiPrefix = `${API_BASE_PATH}/${API_VERSION}`;
 
 const createApp = (logger, eventPublisher) => {
   const app = express();
@@ -53,7 +55,10 @@ const createApp = (logger, eventPublisher) => {
 
   // Routes
   app.use('/api/auth', authRoutes);
-  app.use('/api/users', userRoutes);
+  app.use(apiPrefix, userRouter);
+  // If docs/health should be versioned:
+  // app.use(`${apiPrefix}/docs`, docsRouter);
+  // app.get(`${apiPrefix}/health`, healthHandler);
 
   // 404 handler
   app.use((req, res) => {
