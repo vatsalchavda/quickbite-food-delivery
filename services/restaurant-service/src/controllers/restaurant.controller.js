@@ -1,489 +1,306 @@
 const Restaurant = require('../models/Restaurant');
-const cacheService = require('../config/redis');
-const logger = require('../config/logger');
+const asyncHandler = require('../utils/asyncHandler');
+const { AppError } = require('../middleware/errorHandler');
+const redisClient = require('../config/redis');
 
-// See docs/KNOWLEDGE_BASE.md for caching concepts
+// Cache TTL (Time To Live) - 5 minutes
+const CACHE_TTL = 300;
 
-class RestaurantController {
-  /**
-   * Create a new restaurant
-   * Cache Strategy: Invalidate list caches since new restaurant affects listings
-   */
-  async createRestaurant(req, res) {
-    try {
-      const restaurant = new Restaurant(req.body);
-      await restaurant.save();
-
-      // Invalidate all list/search caches
-      await cacheService.delPattern('restaurants:list:*');
-      await cacheService.delPattern('restaurants:search:*');
-
-      logger.info('Restaurant created', {
-        restaurantId: restaurant._id,
-        name: restaurant.name
-      });
-
-      res.status(201).json({
-        success: true,
-        data: restaurant
-      });
-    } catch (error) {
-      logger.error('Create restaurant failed', { error: error.message });
-      res.status(400).json({
-        success: false,
-        error: error.message
-      });
+// Helper function to get from cache or database
+const getFromCacheOrDB = async (key, dbQuery) => {
+  try {
+    // Try to get from cache
+    const cachedData = await redisClient.get(key);
+    if (cachedData) {
+      return { data: JSON.parse(cachedData), source: 'cache' };
     }
+
+    // If not in cache, get from database
+    const data = await dbQuery();
+    
+    // Store in cache
+    await redisClient.setex(key, CACHE_TTL, JSON.stringify(data));
+    
+    return { data, source: 'database' };
+  } catch (error) {
+    // If Redis fails, just use database
+    const data = await dbQuery();
+    return { data, source: 'database' };
+  }
+};
+
+// Helper function to invalidate cache
+const invalidateCache = async (pattern) => {
+  try {
+    const keys = await redisClient.keys(pattern);
+    if (keys.length > 0) {
+      await redisClient.del(...keys);
+    }
+  } catch (error) {
+    console.error('Cache invalidation error:', error);
+  }
+};
+
+// Create restaurant
+const createRestaurant = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  // Check if restaurant with email already exists
+  const existingRestaurant = await Restaurant.findOne({ email });
+  if (existingRestaurant) {
+    throw new AppError('Restaurant with this email already exists', 400);
   }
 
-  /**
-   * Get all restaurants with pagination
-   * Cache Strategy: Cache-aside with 5-minute TTL
-   */
-  async getRestaurants(req, res) {
-    try {
-      const page = parseInt(req.query.page) || 1;
-      const limit = parseInt(req.query.limit) || 10;
-      const skip = (page - 1) * limit;
+  const restaurant = await Restaurant.create(req.body);
 
-      const cacheKey = `restaurants:list:page:${page}:limit:${limit}`;
+  // Invalidate restaurants list cache
+  await invalidateCache('restaurants:*');
 
-      // Try cache first
-      const cached = await cacheService.get(cacheKey);
-      if (cached) {
-        logger.info('Cache hit', { key: cacheKey });
-        return res.json({
-          success: true,
-          source: 'cache',
-          ...cached
-        });
+  res.status(201).json({
+    success: true,
+    data: restaurant,
+    message: 'Restaurant created successfully'
+  });
+});
+
+// Get all restaurants with pagination
+const getRestaurants = asyncHandler(async (req, res) => {
+  const page = parseInt(req.query.page) || 1;
+  const limit = parseInt(req.query.limit) || 10;
+  const skip = (page - 1) * limit;
+
+  const cacheKey = `restaurants:all:page:${page}:limit:${limit}`;
+
+  const { data, source } = await getFromCacheOrDB(cacheKey, async () => {
+    const restaurants = await Restaurant.find({ isActive: true })
+      .skip(skip)
+      .limit(limit)
+      .select('-menu');
+    
+    const total = await Restaurant.countDocuments({ isActive: true });
+
+    return {
+      restaurants,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.ceil(total / limit)
       }
+    };
+  });
 
-      // Cache miss - query database
-      logger.info('Cache miss', { key: cacheKey });
+  res.status(200).json({
+    success: true,
+    source,
+    data: data.restaurants,
+    pagination: data.pagination
+  });
+});
 
-      const [restaurants, total] = await Promise.all([
-        Restaurant.find({ isActive: true })
-          .select('-menuItems') // Exclude menu items for list view
-          .skip(skip)
-          .limit(limit)
-          .lean(),
-        Restaurant.countDocuments({ isActive: true })
-      ]);
+// Search restaurants
+const searchRestaurants = asyncHandler(async (req, res) => {
+  const { query, cuisine } = req.query;
 
-      const result = {
-        data: restaurants,
-        pagination: {
-          page,
-          limit,
-          total,
-          pages: Math.ceil(total / limit)
-        }
-      };
-
-      // Populate cache with 5-minute TTL
-      await cacheService.set(cacheKey, result, 300);
-
-      res.json({
-        success: true,
-        source: 'database',
-        ...result
-      });
-    } catch (error) {
-      logger.error('Get restaurants failed', { error: error.message });
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch restaurants'
-      });
-    }
+  if (!query && !cuisine) {
+    throw new AppError('Please provide search query or cuisine type', 400);
   }
 
-  /**
-   * Get restaurant by ID with full menu
-   * Cache Strategy: Cache-aside with 10-minute TTL
-   */
-  async getRestaurantById(req, res) {
-    try {
-      const { id } = req.params;
-      const cacheKey = `restaurant:${id}`;
+  const cacheKey = `restaurants:search:${query || ''}:${cuisine || ''}`;
 
-      // Try cache first
-      const cached = await cacheService.get(cacheKey);
-      if (cached) {
-        logger.info('Cache hit', { key: cacheKey });
-        return res.json({
-          success: true,
-          source: 'cache',
-          data: cached
-        });
-      }
+  const { data: restaurants, source } = await getFromCacheOrDB(cacheKey, async () => {
+    const filter = { isActive: true };
 
-      // Cache miss - query database
-      logger.info('Cache miss', { key: cacheKey });
-
-      const restaurant = await Restaurant.findById(id).lean();
-
-      if (!restaurant) {
-        return res.status(404).json({
-          success: false,
-          error: 'Restaurant not found'
-        });
-      }
-
-      // Populate cache with 10-minute TTL (detail pages accessed frequently)
-      await cacheService.set(cacheKey, restaurant, 600);
-
-      res.json({
-        success: true,
-        source: 'database',
-        data: restaurant
-      });
-    } catch (error) {
-      logger.error('Get restaurant failed', { error: error.message });
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch restaurant'
-      });
+    if (query) {
+      filter.$or = [
+        { name: { $regex: query, $options: 'i' } },
+        { description: { $regex: query, $options: 'i' } }
+      ];
     }
+
+    if (cuisine) {
+      filter.cuisineType = { $regex: cuisine, $options: 'i' };
+    }
+
+    return await Restaurant.find(filter).select('-menu');
+  });
+
+  res.status(200).json({
+    success: true,
+    source,
+    data: restaurants,
+    count: restaurants.length
+  });
+});
+
+// Get restaurants by cuisine
+const getRestaurantsByCuisine = asyncHandler(async (req, res) => {
+  const { cuisine } = req.params;
+
+  const cacheKey = `restaurants:cuisine:${cuisine}`;
+
+  const { data: restaurants, source } = await getFromCacheOrDB(cacheKey, async () => {
+    return await Restaurant.find({
+      cuisineType: { $regex: cuisine, $options: 'i' },
+      isActive: true
+    }).select('-menu');
+  });
+
+  res.status(200).json({
+    success: true,
+    source,
+    data: restaurants,
+    count: restaurants.length
+  });
+});
+
+// Get restaurant by ID
+const getRestaurantById = asyncHandler(async (req, res) => {
+  const cacheKey = `restaurant:${req.params.id}`;
+
+  const { data: restaurant, source } = await getFromCacheOrDB(cacheKey, async () => {
+    const found = await Restaurant.findById(req.params.id);
+    if (!found) {
+      throw new AppError('Restaurant not found', 404);
+    }
+    return found;
+  });
+
+  res.status(200).json({
+    success: true,
+    source,
+    data: restaurant
+  });
+});
+
+// Update restaurant
+const updateRestaurant = asyncHandler(async (req, res) => {
+  const restaurant = await Restaurant.findByIdAndUpdate(
+    req.params.id,
+    req.body,
+    { new: true, runValidators: true }
+  );
+
+  if (!restaurant) {
+    throw new AppError('Restaurant not found', 404);
   }
 
-  /**
-   * Update restaurant
-   * Cache Strategy: Invalidate specific restaurant and all list caches
-   */
-  async updateRestaurant(req, res) {
-    try {
-      const { id } = req.params;
+  // Invalidate cache
+  await invalidateCache(`restaurant:${req.params.id}`);
+  await invalidateCache('restaurants:*');
 
-      const restaurant = await Restaurant.findByIdAndUpdate(
-        id,
-        { ...req.body, updatedAt: new Date() },
-        { new: true, runValidators: true }
-      );
+  res.status(200).json({
+    success: true,
+    data: restaurant,
+    message: 'Restaurant updated successfully'
+  });
+});
 
-      if (!restaurant) {
-        return res.status(404).json({
-          success: false,
-          error: 'Restaurant not found'
-        });
-      }
+// Delete restaurant (soft delete)
+const deleteRestaurant = asyncHandler(async (req, res) => {
+  const restaurant = await Restaurant.findByIdAndUpdate(
+    req.params.id,
+    { isActive: false },
+    { new: true }
+  );
 
-      // Invalidate caches
-      await cacheService.del(`restaurant:${id}`);
-      await cacheService.delPattern('restaurants:list:*');
-      await cacheService.delPattern('restaurants:search:*');
-
-      logger.info('Restaurant updated', {
-        restaurantId: id,
-        name: restaurant.name
-      });
-
-      res.json({
-        success: true,
-        data: restaurant
-      });
-    } catch (error) {
-      logger.error('Update restaurant failed', { error: error.message });
-      res.status(400).json({
-        success: false,
-        error: error.message
-      });
-    }
+  if (!restaurant) {
+    throw new AppError('Restaurant not found', 404);
   }
 
-  /**
-   * Delete restaurant (soft delete)
-   * Cache Strategy: Invalidate all related caches
-   */
-  async deleteRestaurant(req, res) {
-    try {
-      const { id } = req.params;
+  // Invalidate cache
+  await invalidateCache(`restaurant:${req.params.id}`);
+  await invalidateCache('restaurants:*');
 
-      const restaurant = await Restaurant.findByIdAndUpdate(
-        id,
-        { isActive: false, updatedAt: new Date() },
-        { new: true }
-      );
+  res.status(200).json({
+    success: true,
+    message: 'Restaurant deleted successfully'
+  });
+});
 
-      if (!restaurant) {
-        return res.status(404).json({
-          success: false,
-          error: 'Restaurant not found'
-        });
-      }
+// Add menu item
+const addMenuItem = asyncHandler(async (req, res) => {
+  const restaurant = await Restaurant.findById(req.params.id);
 
-      // Invalidate all caches
-      await cacheService.del(`restaurant:${id}`);
-      await cacheService.delPattern('restaurants:list:*');
-      await cacheService.delPattern('restaurants:search:*');
-
-      logger.info('Restaurant deleted', {
-        restaurantId: id,
-        name: restaurant.name
-      });
-
-      res.json({
-        success: true,
-        message: 'Restaurant deleted successfully'
-      });
-    } catch (error) {
-      logger.error('Delete restaurant failed', { error: error.message });
-      res.status(500).json({
-        success: false,
-        error: 'Failed to delete restaurant'
-      });
-    }
+  if (!restaurant) {
+    throw new AppError('Restaurant not found', 404);
   }
 
-  /**
-   * Search restaurants by text (name, description, cuisine)
-   * Cache Strategy: Cache search results with 2-minute TTL (searches vary frequently)
-   */
-  async searchRestaurants(req, res) {
-    try {
-      const { query, cuisine } = req.query;
+  restaurant.menu.push(req.body);
+  await restaurant.save();
 
-      if (!query && !cuisine) {
-        return res.status(400).json({
-          success: false,
-          error: 'Search query or cuisine required'
-        });
-      }
+  // Invalidate cache
+  await invalidateCache(`restaurant:${req.params.id}`);
 
-      // Build cache key from search params
-      const cacheKey = `restaurants:search:${query || ''}:${cuisine || ''}`;
+  res.status(201).json({
+    success: true,
+    data: restaurant,
+    message: 'Menu item added successfully'
+  });
+});
 
-      // Try cache first
-      const cached = await cacheService.get(cacheKey);
-      if (cached) {
-        logger.info('Cache hit', { key: cacheKey });
-        return res.json({
-          success: true,
-          source: 'cache',
-          data: cached
-        });
-      }
+// Update menu item
+const updateMenuItem = asyncHandler(async (req, res) => {
+  const restaurant = await Restaurant.findById(req.params.id);
 
-      // Cache miss - build query
-      logger.info('Cache miss', { key: cacheKey });
-
-      const searchQuery = { isActive: true };
-
-      if (query) {
-        searchQuery.$text = { $search: query };
-      }
-
-      if (cuisine) {
-        searchQuery.cuisineType = cuisine;
-      }
-
-      const restaurants = await Restaurant.find(searchQuery)
-        .select('-menuItems')
-        .limit(50)
-        .lean();
-
-      // Cache with shorter TTL (2 min) since search patterns vary
-      await cacheService.set(cacheKey, restaurants, 120);
-
-      res.json({
-        success: true,
-        source: 'database',
-        data: restaurants,
-        count: restaurants.length
-      });
-    } catch (error) {
-      logger.error('Search restaurants failed', { error: error.message });
-      res.status(500).json({
-        success: false,
-        error: 'Search failed'
-      });
-    }
+  if (!restaurant) {
+    throw new AppError('Restaurant not found', 404);
   }
 
-  /**
-   * Get restaurants by cuisine type
-   * Cache Strategy: Cache-aside with 5-minute TTL
-   */
-  async getRestaurantsByCuisine(req, res) {
-    try {
-      const { cuisine } = req.params;
-      const cacheKey = `restaurants:cuisine:${cuisine}`;
+  const menuItem = restaurant.menu.id(req.params.itemId);
 
-      // Try cache first
-      const cached = await cacheService.get(cacheKey);
-      if (cached) {
-        logger.info('Cache hit', { key: cacheKey });
-        return res.json({
-          success: true,
-          source: 'cache',
-          data: cached
-        });
-      }
-
-      // Cache miss
-      logger.info('Cache miss', { key: cacheKey });
-
-      const restaurants = await Restaurant.find({
-        cuisineType: cuisine,
-        isActive: true
-      })
-        .select('-menuItems')
-        .lean();
-
-      // Cache with 5-minute TTL
-      await cacheService.set(cacheKey, restaurants, 300);
-
-      res.json({
-        success: true,
-        source: 'database',
-        data: restaurants,
-        count: restaurants.length
-      });
-    } catch (error) {
-      logger.error('Get by cuisine failed', { error: error.message });
-      res.status(500).json({
-        success: false,
-        error: 'Failed to fetch restaurants'
-      });
-    }
+  if (!menuItem) {
+    throw new AppError('Menu item not found', 404);
   }
 
-  /**
-   * Add menu item to restaurant
-   * Cache Strategy: Invalidate restaurant cache
-   */
-  async addMenuItem(req, res) {
-    try {
-      const { id } = req.params;
-      const menuItem = req.body;
+  Object.assign(menuItem, req.body);
+  await restaurant.save();
 
-      const restaurant = await Restaurant.findById(id);
+  // Invalidate cache
+  await invalidateCache(`restaurant:${req.params.id}`);
 
-      if (!restaurant) {
-        return res.status(404).json({
-          success: false,
-          error: 'Restaurant not found'
-        });
-      }
+  res.status(200).json({
+    success: true,
+    data: restaurant,
+    message: 'Menu item updated successfully'
+  });
+});
 
-      restaurant.menuItems.push(menuItem);
-      restaurant.updatedAt = new Date();
-      await restaurant.save();
+// Delete menu item
+const deleteMenuItem = asyncHandler(async (req, res) => {
+  const restaurant = await Restaurant.findById(req.params.id);
 
-      // Invalidate cache
-      await cacheService.del(`restaurant:${id}`);
-
-      logger.info('Menu item added', {
-        restaurantId: id,
-        itemName: menuItem.name
-      });
-
-      res.status(201).json({
-        success: true,
-        data: restaurant
-      });
-    } catch (error) {
-      logger.error('Add menu item failed', { error: error.message });
-      res.status(400).json({
-        success: false,
-        error: error.message
-      });
-    }
+  if (!restaurant) {
+    throw new AppError('Restaurant not found', 404);
   }
 
-  /**
-   * Update menu item
-   * Cache Strategy: Invalidate restaurant cache
-   */
-  async updateMenuItem(req, res) {
-    try {
-      const { id, itemId } = req.params;
+  const menuItem = restaurant.menu.id(req.params.itemId);
 
-      const restaurant = await Restaurant.findById(id);
-
-      if (!restaurant) {
-        return res.status(404).json({
-          success: false,
-          error: 'Restaurant not found'
-        });
-      }
-
-      const menuItem = restaurant.menuItems.id(itemId);
-
-      if (!menuItem) {
-        return res.status(404).json({
-          success: false,
-          error: 'Menu item not found'
-        });
-      }
-
-      Object.assign(menuItem, req.body);
-      restaurant.updatedAt = new Date();
-      await restaurant.save();
-
-      // Invalidate cache
-      await cacheService.del(`restaurant:${id}`);
-
-      logger.info('Menu item updated', {
-        restaurantId: id,
-        itemId,
-        itemName: menuItem.name
-      });
-
-      res.json({
-        success: true,
-        data: restaurant
-      });
-    } catch (error) {
-      logger.error('Update menu item failed', { error: error.message });
-      res.status(400).json({
-        success: false,
-        error: error.message
-      });
-    }
+  if (!menuItem) {
+    throw new AppError('Menu item not found', 404);
   }
 
-  /**
-   * Delete menu item
-   * Cache Strategy: Invalidate restaurant cache
-   */
-  async deleteMenuItem(req, res) {
-    try {
-      const { id, itemId } = req.params;
+  menuItem.remove();
+  await restaurant.save();
 
-      const restaurant = await Restaurant.findById(id);
+  // Invalidate cache
+  await invalidateCache(`restaurant:${req.params.id}`);
 
-      if (!restaurant) {
-        return res.status(404).json({
-          success: false,
-          error: 'Restaurant not found'
-        });
-      }
+  res.status(200).json({
+    success: true,
+    message: 'Menu item deleted successfully'
+  });
+});
 
-      restaurant.menuItems.pull(itemId);
-      restaurant.updatedAt = new Date();
-      await restaurant.save();
-
-      // Invalidate cache
-      await cacheService.del(`restaurant:${id}`);
-
-      logger.info('Menu item deleted', {
-        restaurantId: id,
-        itemId
-      });
-
-      res.json({
-        success: true,
-        message: 'Menu item deleted successfully'
-      });
-    } catch (error) {
-      logger.error('Delete menu item failed', { error: error.message });
-      res.status(500).json({
-        success: false,
-        error: 'Failed to delete menu item'
-      });
-    }
-  }
-}
-
-module.exports = new RestaurantController();
+module.exports = {
+  createRestaurant,
+  getRestaurants,
+  searchRestaurants,
+  getRestaurantsByCuisine,
+  getRestaurantById,
+  updateRestaurant,
+  deleteRestaurant,
+  addMenuItem,
+  updateMenuItem,
+  deleteMenuItem
+};

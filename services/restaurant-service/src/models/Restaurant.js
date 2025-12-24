@@ -21,7 +21,7 @@ const menuItemSchema = new mongoose.Schema({
     enum: ['appetizer', 'main', 'dessert', 'beverage', 'side'],
     required: true,
   },
-  image: {
+  imageUrl: {
     type: String,
     default: 'https://via.placeholder.com/300x200?text=Menu+Item',
   },
@@ -29,17 +29,8 @@ const menuItemSchema = new mongoose.Schema({
     type: Boolean,
     default: true,
   },
-  dietary: {
-    vegetarian: { type: Boolean, default: false },
-    vegan: { type: Boolean, default: false },
-    glutenFree: { type: Boolean, default: false },
-    spicy: { type: Boolean, default: false },
-  },
-  preparationTime: {
-    type: Number, // in minutes
-    default: 15,
-  },
-});
+  dietaryInfo: [String],
+}, { timestamps: true });
 
 const restaurantSchema = new mongoose.Schema(
   {
@@ -64,17 +55,11 @@ const restaurantSchema = new mongoose.Schema(
       city: { type: String, required: true },
       state: { type: String, required: true },
       zipCode: { type: String, required: true },
+      country: { type: String, default: 'USA' },
       coordinates: {
-        type: {
-          type: String,
-          enum: ['Point'],
-          default: 'Point'
-        },
-        coordinates: {
-          type: [Number],
-          required: true
-        }
-      },
+        lat: Number,
+        lng: Number
+      }
     },
     phone: {
       type: String,
@@ -83,19 +68,29 @@ const restaurantSchema = new mongoose.Schema(
     email: {
       type: String,
       required: [true, 'Email is required'],
+      unique: true,
+      index: true,
+      lowercase: true
     },
-    images: {
-      logo: {
-        type: String,
-        default: 'https://via.placeholder.com/150x150?text=Logo',
-      },
-      cover: {
-        type: String,
-        default: 'https://via.placeholder.com/800x400?text=Restaurant',
-      },
-      gallery: [String],
+    ownerId: {
+      type: String,
+      index: true
     },
-    menuItems: [menuItemSchema],
+    openingHours: {
+      monday: { open: String, close: String },
+      tuesday: { open: String, close: String },
+      wednesday: { open: String, close: String },
+      thursday: { open: String, close: String },
+      friday: { open: String, close: String },
+      saturday: { open: String, close: String },
+      sunday: { open: String, close: String },
+    },
+    menu: [menuItemSchema],
+    isActive: {
+      type: Boolean,
+      default: true,
+      index: true
+    },
     rating: {
       average: {
         type: Number,
@@ -108,65 +103,15 @@ const restaurantSchema = new mongoose.Schema(
         default: 0,
       },
     },
-    priceRange: {
-      type: String,
-      enum: ['$', '$$', '$$$', '$$$$'],
-      default: '$$',
-    },
-    openingHours: {
-      monday: { open: String, close: String },
-      tuesday: { open: String, close: String },
-      wednesday: { open: String, close: String },
-      thursday: { open: String, close: String },
-      friday: { open: String, close: String },
-      saturday: { open: String, close: String },
-      sunday: { open: String, close: String },
-    },
-    deliveryInfo: {
-      available: {
-        type: Boolean,
-        default: true,
-      },
-      fee: {
-        type: Number,
-        default: 0,
-      },
-      minimumOrder: {
-        type: Number,
-        default: 0,
-      },
-      estimatedTime: {
-        type: Number, // in minutes
-        default: 30,
-      },
-    },
-    isActive: {
-      type: Boolean,
-      default: true,
-    },
-    ownerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      required: false, // Optional - would be required with restaurant owner authentication
-      index: true,
-    },
   },
   {
     timestamps: true,
   }
 );
 
-// COMPOUND TEXT INDEX for searching by name, description, and cuisine
-restaurantSchema.index({ name: 'text', description: 'text', cuisineType: 'text' });
+// Add indexes for better query performance
+restaurantSchema.index({ cuisineType: 1 });
+restaurantSchema.index({ 'address.city': 1 });
+restaurantSchema.index({ name: 'text', description: 'text' });
 
-// GEOSPATIAL INDEX for location-based queries (find restaurants nearby)
-restaurantSchema.index({ 'address.coordinates': '2dsphere' });
-
-// Remove sensitive data from JSON response
-restaurantSchema.methods.toJSON = function () {
-  const restaurant = this.toObject();
-  return restaurant;
-};
-
-const Restaurant = mongoose.model('Restaurant', restaurantSchema);
-
-module.exports = Restaurant;
+module.exports = mongoose.model('Restaurant', restaurantSchema);

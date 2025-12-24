@@ -1,6 +1,18 @@
 const express = require('express');
 const router = express.Router();
 const restaurantController = require('../controllers/restaurant.controller');
+const validateRequest = require('../middleware/validateRequest');
+const {
+  createRestaurantSchema,
+  updateRestaurantSchema,
+  restaurantIdSchema,
+  queryRestaurantsSchema
+} = require('../schemas/restaurant.schema');
+const {
+  createMenuItemSchema,
+  updateMenuItemSchema,
+  menuItemIdSchema
+} = require('../schemas/menu.schema');
 
 /**
  * @swagger
@@ -20,70 +32,33 @@ const restaurantController = require('../controllers/restaurant.controller');
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - name
- *               - address
- *               - cuisineType
- *             properties:
- *               name:
- *                 type: string
- *                 example: "Pizza Palace"
- *               description:
- *                 type: string
- *                 example: "Authentic Italian pizza and pasta"
- *               cuisineType:
- *                 type: string
- *                 example: "Italian"
- *               address:
- *                 type: object
- *                 properties:
- *                   street:
- *                     type: string
- *                     example: "123 Main St"
- *                   city:
- *                     type: string
- *                     example: "New York"
- *                   state:
- *                     type: string
- *                     example: "NY"
- *                   zipCode:
- *                     type: string
- *                     example: "10001"
- *                   coordinates:
- *                     type: object
- *                     properties:
- *                       lat:
- *                         type: number
- *                         example: 40.7128
- *                       lng:
- *                         type: number
- *                         example: -74.0060
- *               phone:
- *                 type: string
- *                 example: "+1-555-123-4567"
- *               email:
- *                 type: string
- *                 example: "contact@pizzapalace.com"
- *               openingHours:
- *                 type: object
- *                 properties:
- *                   monday:
- *                     type: object
- *                     properties:
- *                       open:
- *                         type: string
- *                         example: "09:00"
- *                       close:
- *                         type: string
- *                         example: "22:00"
+ *             $ref: '#/components/schemas/Restaurant'
  *     responses:
  *       201:
  *         description: Restaurant created successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   $ref: '#/components/schemas/Restaurant'
+ *                 message:
+ *                   type: string
+ *                   example: Restaurant created successfully
  *       400:
- *         description: Invalid input
+ *         $ref: '#/components/responses/ValidationError'
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
  */
-router.post('/', restaurantController.createRestaurant);
+router.post(
+  '/',
+  validateRequest(createRestaurantSchema),
+  restaurantController.createRestaurant
+);
 
 /**
  * @swagger
@@ -96,17 +71,20 @@ router.post('/', restaurantController.createRestaurant);
  *         name: page
  *         schema:
  *           type: integer
+ *           minimum: 1
  *           default: 1
  *         description: Page number
  *       - in: query
  *         name: limit
  *         schema:
  *           type: integer
+ *           minimum: 1
+ *           maximum: 100
  *           default: 10
  *         description: Items per page
  *     responses:
  *       200:
- *         description: List of restaurants
+ *         description: List of restaurants with pagination
  *         content:
  *           application/json:
  *             schema:
@@ -114,10 +92,10 @@ router.post('/', restaurantController.createRestaurant);
  *               properties:
  *                 success:
  *                   type: boolean
+ *                   example: true
  *                 source:
  *                   type: string
  *                   enum: [cache, database]
- *                   description: Data source (cache hit or database query)
  *                 data:
  *                   type: array
  *                   items:
@@ -133,8 +111,14 @@ router.post('/', restaurantController.createRestaurant);
  *                       type: integer
  *                     pages:
  *                       type: integer
+ *       500:
+ *         $ref: '#/components/responses/ServerError'
  */
-router.get('/', restaurantController.getRestaurants);
+router.get(
+  '/',
+  validateRequest(queryRestaurantsSchema, 'query'),
+  restaurantController.getRestaurants
+);
 
 /**
  * @swagger
@@ -148,13 +132,11 @@ router.get('/', restaurantController.getRestaurants);
  *         schema:
  *           type: string
  *         description: Search text (name, description)
- *         example: "pizza"
  *       - in: query
  *         name: cuisine
  *         schema:
  *           type: string
  *         description: Cuisine type filter
- *         example: "Italian"
  *     responses:
  *       200:
  *         description: Search results
@@ -175,9 +157,13 @@ router.get('/', restaurantController.getRestaurants);
  *                 count:
  *                   type: integer
  *       400:
- *         description: Missing search parameters
+ *         $ref: '#/components/responses/ValidationError'
  */
-router.get('/search', restaurantController.searchRestaurants);
+router.get(
+  '/search',
+  validateRequest(queryRestaurantsSchema, 'query'),
+  restaurantController.searchRestaurants
+);
 
 /**
  * @swagger
@@ -192,7 +178,6 @@ router.get('/search', restaurantController.searchRestaurants);
  *         schema:
  *           type: string
  *         description: Cuisine type
- *         example: "Italian"
  *     responses:
  *       200:
  *         description: Restaurants of specified cuisine
@@ -244,9 +229,13 @@ router.get('/cuisine/:cuisine', restaurantController.getRestaurantsByCuisine);
  *                 data:
  *                   $ref: '#/components/schemas/Restaurant'
  *       404:
- *         description: Restaurant not found
+ *         $ref: '#/components/responses/NotFound'
  */
-router.get('/:id', restaurantController.getRestaurantById);
+router.get(
+  '/:id',
+  validateRequest(restaurantIdSchema, 'params'),
+  restaurantController.getRestaurantById
+);
 
 /**
  * @swagger
@@ -260,31 +249,37 @@ router.get('/:id', restaurantController.getRestaurantById);
  *         required: true
  *         schema:
  *           type: string
- *         description: Restaurant ID
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *               description:
- *                 type: string
- *               cuisineType:
- *                 type: string
- *               phone:
- *                 type: string
- *               email:
- *                 type: string
+ *             $ref: '#/components/schemas/Restaurant'
  *     responses:
  *       200:
  *         description: Restaurant updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Restaurant'
+ *                 message:
+ *                   type: string
  *       404:
- *         description: Restaurant not found
+ *         $ref: '#/components/responses/NotFound'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
  */
-router.put('/:id', restaurantController.updateRestaurant);
+router.put(
+  '/:id',
+  validateRequest(restaurantIdSchema, 'params'),
+  validateRequest(updateRestaurantSchema),
+  restaurantController.updateRestaurant
+);
 
 /**
  * @swagger
@@ -298,14 +293,26 @@ router.put('/:id', restaurantController.updateRestaurant);
  *         required: true
  *         schema:
  *           type: string
- *         description: Restaurant ID
  *     responses:
  *       200:
  *         description: Restaurant deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
  *       404:
- *         description: Restaurant not found
+ *         $ref: '#/components/responses/NotFound'
  */
-router.delete('/:id', restaurantController.deleteRestaurant);
+router.delete(
+  '/:id',
+  validateRequest(restaurantIdSchema, 'params'),
+  restaurantController.deleteRestaurant
+);
 
 /**
  * @swagger
@@ -319,48 +326,37 @@ router.delete('/:id', restaurantController.deleteRestaurant);
  *         required: true
  *         schema:
  *           type: string
- *         description: Restaurant ID
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             required:
- *               - name
- *               - price
- *               - category
- *             properties:
- *               name:
- *                 type: string
- *                 example: "Margherita Pizza"
- *               description:
- *                 type: string
- *                 example: "Classic tomato, mozzarella, and basil"
- *               price:
- *                 type: number
- *                 example: 12.99
- *               category:
- *                 type: string
- *                 example: "Pizza"
- *               imageUrl:
- *                 type: string
- *                 example: "https://example.com/margherita.jpg"
- *               isAvailable:
- *                 type: boolean
- *                 default: true
- *               dietaryInfo:
- *                 type: array
- *                 items:
- *                   type: string
- *                 example: ["vegetarian"]
+ *             $ref: '#/components/schemas/MenuItem'
  *     responses:
  *       201:
  *         description: Menu item added successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Restaurant'
+ *                 message:
+ *                   type: string
  *       404:
- *         description: Restaurant not found
+ *         $ref: '#/components/responses/NotFound'
+ *       400:
+ *         $ref: '#/components/responses/ValidationError'
  */
-router.post('/:id/menu', restaurantController.addMenuItem);
+router.post(
+  '/:id/menu',
+  validateRequest(restaurantIdSchema, 'params'),
+  validateRequest(createMenuItemSchema),
+  restaurantController.addMenuItem
+);
 
 /**
  * @swagger
@@ -374,35 +370,41 @@ router.post('/:id/menu', restaurantController.addMenuItem);
  *         required: true
  *         schema:
  *           type: string
- *         description: Restaurant ID
  *       - in: path
  *         name: itemId
  *         required: true
  *         schema:
  *           type: string
- *         description: Menu item ID
  *     requestBody:
  *       required: true
  *       content:
  *         application/json:
  *           schema:
- *             type: object
- *             properties:
- *               name:
- *                 type: string
- *               description:
- *                 type: string
- *               price:
- *                 type: number
- *               isAvailable:
- *                 type: boolean
+ *             $ref: '#/components/schemas/MenuItem'
  *     responses:
  *       200:
  *         description: Menu item updated successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 data:
+ *                   $ref: '#/components/schemas/Restaurant'
+ *                 message:
+ *                   type: string
  *       404:
- *         description: Restaurant or menu item not found
+ *         $ref: '#/components/responses/NotFound'
  */
-router.put('/:id/menu/:itemId', restaurantController.updateMenuItem);
+router.put(
+  '/:id/menu/:itemId',
+  validateRequest(restaurantIdSchema, 'params'),
+  validateRequest(menuItemIdSchema, 'params'),
+  validateRequest(updateMenuItemSchema),
+  restaurantController.updateMenuItem
+);
 
 /**
  * @swagger
@@ -416,19 +418,31 @@ router.put('/:id/menu/:itemId', restaurantController.updateMenuItem);
  *         required: true
  *         schema:
  *           type: string
- *         description: Restaurant ID
  *       - in: path
  *         name: itemId
  *         required: true
  *         schema:
  *           type: string
- *         description: Menu item ID
  *     responses:
  *       200:
  *         description: Menu item deleted successfully
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 message:
+ *                   type: string
  *       404:
- *         description: Restaurant or menu item not found
+ *         $ref: '#/components/responses/NotFound'
  */
-router.delete('/:id/menu/:itemId', restaurantController.deleteMenuItem);
+router.delete(
+  '/:id/menu/:itemId',
+  validateRequest(restaurantIdSchema, 'params'),
+  validateRequest(menuItemIdSchema, 'params'),
+  restaurantController.deleteMenuItem
+);
 
 module.exports = router;
